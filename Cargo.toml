@@ -1,0 +1,10 @@
+[package]
+name = "exifmap"
+version = "0.1.0"
+authors = ["Wieland Hoffmann <themineo@gmail.com>"]
+
+[dependencies]
+geojson = "0.12.0"
+rexiv2 = "0.6.0"
+walkdir = "2"
+failure = "0.1.3"
