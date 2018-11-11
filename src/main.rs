@@ -1,5 +1,8 @@
 extern crate failure;
+#[macro_use]
+extern crate log;
 extern crate rexiv2;
+extern crate simple_logger;
 extern crate walkdir;
 
 use std::path;
@@ -8,11 +11,11 @@ use walkdir::WalkDir;
 
 type EMResult<T> = std::result::Result<T, failure::Error>;
 
-fn get_gps_info(path: &path::Path) -> EMResult<rexiv2::GpsInfo> {
+fn get_gps_info(path: &path::Path) -> EMResult<Option<rexiv2::GpsInfo>> {
     let metadata = rexiv2::Metadata::new_from_path(path)?;
     match metadata.get_gps_info() {
-        None => failure::bail!("No GPS info in {}", path.display()),
-        Some(gpsinfo) => Ok(gpsinfo),
+        None => Ok(None),
+        Some(gpsinfo) => Ok(Some(gpsinfo)),
     }
 }
 
@@ -21,19 +24,28 @@ fn walk_files_in_dir(dirname: &str) {
         let eu = entry.unwrap();
         let path = eu.path();
         match get_gps_info(path) {
-            Ok(gpsinfo) => {
-                println!("{}", path.display());
-                println!("{:?}", gpsinfo);
+            Ok(Some(gpsinfo)) => {
+                info!("{}", path.display());
+                info!("{:?}", gpsinfo);
             }
-            Err(e) => println!("{}", e),
+            Ok(None) => info!("No GPS info in {}", path.display()),
+            Err(e) => error!("{}", e),
         }
     }
 }
 
 fn main() {
+    match simple_logger::init_with_level(log::Level::Info) {
+        Err(e) => {
+            println!("Failed to intialize logging: {}", e);
+            return;
+        }
+        Ok(()) => {}
+
+    }
     let args: Vec<String> = env::args().collect();
     match args.get(1) {
         Some(dirname) => walk_files_in_dir(dirname),
-        None => println!("No directory name"),
+        None => error!("No directory name"),
     }
 }
