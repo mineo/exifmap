@@ -1,8 +1,8 @@
 extern crate failure;
 #[macro_use]
 extern crate log;
+extern crate env_logger;
 extern crate rexiv2;
-extern crate simple_logger;
 extern crate walkdir;
 
 use std::path;
@@ -35,14 +35,7 @@ fn walk_files_in_dir(dirname: &str) {
 }
 
 fn main() {
-    match simple_logger::init_with_level(log::Level::Info) {
-        Err(e) => {
-            println!("Failed to intialize logging: {}", e);
-            return;
-        }
-        Ok(()) => {}
-
-    }
+    env_logger::init();
     let args: Vec<String> = env::args().collect();
     match args.get(1) {
         Some(dirname) => walk_files_in_dir(dirname),
