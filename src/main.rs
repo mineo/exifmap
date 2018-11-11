@@ -43,30 +43,42 @@ fn feature_from_gpsinfo(gpsinfo: &rexiv2::GpsInfo, path: &path::Path) -> EMResul
 }
 
 fn featurecollection_from_dir(dirname: &str) -> EMResult<FeatureCollection> {
-    let mut features: Vec<Feature> = vec![];
-    for entry in WalkDir::new(dirname).into_iter().filter(|e| match e {
-        // TODO: This is similar to map_or_else on nightly
-        Ok(f) => f.file_type().is_file(),
-        Err(err) => {
-            error!("{:?}: {}", e, err);
-            false
-        }
-    })
-    {
-        let eu = entry.unwrap();
-        let path = eu.path();
-        let nicepath = path.display();
-        match get_gps_info(path) {
-            Ok(Some(gpsinfo)) => {
-                match feature_from_gpsinfo(&gpsinfo, path) {
-                    Ok(feature) => features.push(feature),
-                    Err(e) => error!("{}: {}", nicepath, e),
+    let features: Vec<Feature> = WalkDir::new(dirname)
+        .into_iter()
+        .filter(|e| match e {
+            // TODO: This is similar to map_or_else on nightly
+            Ok(f) => f.file_type().is_file(),
+            Err(err) => {
+                error!("{:?}: {}", e, err);
+                false
+            }
+        })
+        .map(|entry| {
+            let eu = entry.unwrap();
+            let path = eu.path();
+            let nicepath = path.display();
+            match get_gps_info(path) {
+                Ok(Some(gpsinfo)) => {
+                    match feature_from_gpsinfo(&gpsinfo, path) {
+                        Ok(feature) => Some(feature),
+                        Err(e) => {
+                            error!("{}: {}", nicepath, e);
+                            None
+                        }
+                    }
+                }
+                Ok(None) => {
+                    info!("{}: No GPS info", nicepath);
+                    None
+                }
+                Err(e) => {
+                    error!("{}: {}", nicepath, e);
+                    None
                 }
             }
-            Ok(None) => info!("{}: No GPS info", nicepath),
-            Err(e) => error!("{}: {}", nicepath, e),
-        }
-    }
+        })
+        .filter_map(|x| x)
+        .collect();
     let allfeatures = FeatureCollection {
         bbox: None,
         features: features,
