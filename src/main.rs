@@ -1,18 +1,22 @@
 extern crate failure;
 extern crate geojson;
+extern crate gexiv2_sys;
 #[macro_use]
 extern crate log;
 extern crate env_logger;
+extern crate rayon;
 extern crate rexiv2;
 extern crate serde_json;
 extern crate walkdir;
 
 use geojson::{FeatureCollection, Feature, Geometry, Value};
+use rayon::prelude::*;
 use serde_json::{Map, to_value};
 use std::convert::From;
 use std::fs;
 use std::path;
 use std::env;
+use std::sync::Once;
 use walkdir::WalkDir;
 
 type EMResult<T> = std::result::Result<T, failure::Error>;
@@ -64,6 +68,7 @@ fn get_gps_info(path: &path::PathBuf) -> EMResult<Option<rexiv2::GpsInfo>> {
 fn featurecollection_from_dir(dirname: &str) -> EMResult<FeatureCollection> {
     let features: Vec<_> = WalkDir::new(dirname)
         .into_iter()
+        .par_bridge()
         .filter(|e| match e {
             // TODO: This is similar to map_or_else on nightly
             Ok(f) => f.file_type().is_file(),
@@ -94,6 +99,14 @@ fn featurecollection_from_dir(dirname: &str) -> EMResult<FeatureCollection> {
 }
 
 fn main() -> Result<(), failure::Error> {
+    static START: Once = Once::new();
+
+    START.call_once(|| {
+        unsafe {
+            gexiv2_sys::gexiv2_initialize();
+        }
+    });
+
     env_logger::init();
     let args: Vec<String> = env::args().collect();
     let indir = args.get(1).expect("No directory name");
