@@ -17,6 +17,42 @@ use walkdir::WalkDir;
 
 type EMResult<T> = std::result::Result<T, failure::Error>;
 
+#[derive(Debug, failure::Fail)]
+enum EMError {
+    #[fail(display = "{} has no GPS information", filename)]
+    NoGPSInformation { filename: String },
+}
+
+struct MediaInfo {
+    path: String,
+    gpsinfo: Option<rexiv2::GpsInfo>,
+}
+
+impl MediaInfo {
+    pub fn to_feature(&self) -> EMResult<Feature> {
+        if self.gpsinfo.is_none() {
+            return Err(EMError::NoGPSInformation{ filename: self.path.to_owned() })?;
+        };
+
+        let mut properties = Map::new();
+        properties.insert(String::from("filename"), to_value(self.path.to_owned())?);
+
+        let thispoint = Value::Point(vec![
+            self.gpsinfo.unwrap().longitude,
+            self.gpsinfo.unwrap().latitude,
+        ]);
+        let thisgeometry = Geometry::new(thispoint);
+        let thisfeature = Feature {
+            bbox: None,
+            geometry: Some(thisgeometry),
+            id: None,
+            properties: Some(properties),
+            foreign_members: None,
+        };
+        Ok(thisfeature)
+    }
+}
+
 fn get_gps_info(path: &path::PathBuf) -> EMResult<Option<rexiv2::GpsInfo>> {
     let metadata = rexiv2::Metadata::new_from_path(path)?;
     match metadata.get_gps_info() {
@@ -25,25 +61,8 @@ fn get_gps_info(path: &path::PathBuf) -> EMResult<Option<rexiv2::GpsInfo>> {
     }
 }
 
-fn feature_from_gpsinfo(gpsinfo: &rexiv2::GpsInfo, path: &str) -> EMResult<Feature> {
-    info!("{}", path);
-    info!("{:?}", gpsinfo);
-    let mut properties = Map::new();
-    properties.insert(String::from("filename"), to_value(path)?);
-    let thispoint = Value::Point(vec![gpsinfo.longitude, gpsinfo.latitude]);
-    let thisgeometry = Geometry::new(thispoint);
-    let thisfeature = Feature {
-        bbox: None,
-        geometry: Some(thisgeometry),
-        id: None,
-        properties: Some(properties),
-        foreign_members: None,
-    };
-    Ok(thisfeature)
-}
-
 fn featurecollection_from_dir(dirname: &str) -> EMResult<FeatureCollection> {
-    let features: Vec<Feature> = WalkDir::new(dirname)
+    let features: Vec<_> = WalkDir::new(dirname)
         .into_iter()
         .filter(|e| match e {
             // TODO: This is similar to map_or_else on nightly
@@ -53,34 +72,18 @@ fn featurecollection_from_dir(dirname: &str) -> EMResult<FeatureCollection> {
                 false
             }
         })
-        // TODO: filter Err entries here, but log them
         .map(|entry| {
             let path = entry.unwrap().path().to_owned();
-            let gpsinfo = get_gps_info(&path);
-            (path.display().to_string().to_owned(), gpsinfo)
+            get_gps_info(&path).map(|gps| {
+                MediaInfo {
+                    path: path.display().to_string().to_owned(),
+                    gpsinfo: gps,
+                }
+            })
         })
-        .filter_map(|(path, gpsinfo)| {
-            match gpsinfo {
-                Ok(None) => {
-                    info!("{}: No GPS info", path);
-                    None
-                }
-                Err(e) => {
-                    error!("{}: {}", path, e);
-                    None
-                }
-                Ok(Some(gps)) => Some((path, gps))
-            }}
-        )
-        .filter_map(|(path, gpsinfo)| {
-            match feature_from_gpsinfo(&gpsinfo, &path) {
-                Ok(feature) => Some(feature),
-                Err(e) => {
-                    error!("{}: {}", path, e);
-                    None
-                }
-            }
-        })
+        .flat_map(|m| m.map(|i| i.to_feature()))
+        .map(|converted| converted.map_err(|e| error!("{}", e)))
+        .flatten()
         .collect();
     let allfeatures = FeatureCollection {
         bbox: None,
