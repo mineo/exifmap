@@ -1,15 +1,19 @@
 extern crate failure;
 extern crate geojson;
 extern crate gexiv2_sys;
+extern crate libc;
 #[macro_use]
 extern crate log;
 extern crate env_logger;
+extern crate magick_rust;
 extern crate rayon;
 extern crate rexiv2;
 extern crate serde_json;
 extern crate walkdir;
 
 use geojson::{FeatureCollection, Feature, Geometry, Value};
+use libc::size_t;
+use magick_rust::{MagickWand, magick_wand_genesis};
 use rayon::prelude::*;
 use serde_json::{Map, to_value};
 use std::convert::From;
@@ -31,10 +35,19 @@ enum EMError {
 
 struct MediaInfo {
     path: path::PathBuf,
+    thumbnail_filename: String,
     gpsinfo: rexiv2::GpsInfo,
 }
 
 impl MediaInfo {
+    pub fn new(path: path::PathBuf, gpsinfo: rexiv2::GpsInfo) -> MediaInfo {
+        MediaInfo {
+            thumbnail_filename: MediaInfo::thumbnail_filename(path.as_ref()),
+            path: path,
+            gpsinfo: gpsinfo,
+        }
+    }
+
     pub fn to_feature(&self) -> EMResult<Feature> {
         let mut properties = Map::new();
         properties.insert(String::from("filename"), to_value(self.path.to_owned())?);
@@ -52,6 +65,29 @@ impl MediaInfo {
             foreign_members: None,
         };
         Ok(thisfeature)
+    }
+
+    pub fn generate_thumbnail(&self, target_directory: &path::Path, width: size_t, height: size_t) -> EMResult<()> {
+        let wand = MagickWand::new();
+        if let Err(e) = wand.read_image(self.path.to_str().unwrap()) {
+            failure::bail!("Error reading: {}", e);
+        }
+        wand.fit(width, height);
+        let mut complete_thumbnail_filename = target_directory.to_owned();
+        complete_thumbnail_filename.push(self.thumbnail_filename.to_owned());
+        if complete_thumbnail_filename.exists() {
+            failure::bail!("{} exists!", complete_thumbnail_filename.display());
+        }
+        if let Err(e) = wand.write_image(complete_thumbnail_filename.to_str().unwrap()) {
+            failure::bail!("Error writing: {}", e);
+        }
+        Ok(())
+    }
+
+    fn thumbnail_filename(path: &path::Path) -> String {
+        let original_file_stem = path.file_stem().expect(&format!("MediaInfo without filename: {}", path.display())).to_str().unwrap();
+        let original_file_extension = path.extension().expect(&format!("MediaInfo without file extension: {}", path.display())).to_str().unwrap();
+        format!("{}_thumb.{}", original_file_stem, original_file_extension)
     }
 }
 
@@ -80,10 +116,7 @@ fn mediainfos_from_dir(dirname: &str) -> Vec<EMResult<MediaInfo>> {
             match get_gps_info(&path) {
                 Err(e) => Err(e),
                 Ok(Some(gps)) =>
-                    Ok(MediaInfo {
-                        path: path,
-                        gpsinfo: gps,
-                    }),
+                    Ok(MediaInfo::new(path, gps)),
                 Ok(None) =>
                     Err(EMError::NoGPSInformation{ filename: path.to_string_lossy().to_string() })?,
             }
@@ -97,6 +130,7 @@ fn main() -> EMResult<()> {
     START.call_once(|| {
         unsafe {
             gexiv2_sys::gexiv2_initialize();
+            magick_wand_genesis();
         }
     });
 
@@ -116,7 +150,9 @@ fn main() -> EMResult<()> {
         })?;
     }
 
-    let features = mediainfos_from_dir(indir)
+    assert!(outpath.is_dir());
+
+    let mediainfos: Vec<MediaInfo> = mediainfos_from_dir(indir)
         .into_par_iter()
         .map(|maybemediainfo| maybemediainfo.map_err(|e| {
             match e.as_fail().downcast_ref::<EMError>() {
@@ -124,14 +160,29 @@ fn main() -> EMResult<()> {
                 _ => error!("{}", e),
             }
         }))
-        .flat_map(|m| m.map(|i| i.to_feature()))
         .flatten()
         .collect();
+
+    let features = mediainfos
+        .into_par_iter()
+        .map(|m| {
+            match m.generate_thumbnail(outpath.as_ref(), 500, 500) {
+                Err(e) => Err(e),
+                _ => Ok(m)
+            }
+        })
+        .map(|maybemediainfo| maybemediainfo.map_err(|e| error!("{}", e)))
+        .flatten()
+        .map(|m| m.to_feature())
+        .flatten()
+        .collect();
+
     let allfeatures = FeatureCollection {
         bbox: None,
         features: features,
         foreign_members: None,
     };
+
     Ok(allfeatures)
         .and_then(|f| serde_json::to_string(&f).map_err(From::from))
         .and_then(|s| fs::write(outfile, s).map_err(From::from))
