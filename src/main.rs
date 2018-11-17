@@ -1,3 +1,4 @@
+extern crate clap;
 extern crate failure;
 extern crate geojson;
 extern crate gexiv2_sys;
@@ -11,7 +12,8 @@ extern crate rexiv2;
 extern crate serde_json;
 extern crate walkdir;
 
-use geojson::{FeatureCollection, Feature, Geometry, Value};
+use clap::{App, Arg};
+use geojson::{Feature, FeatureCollection, Geometry, Value};
 use libc::size_t;
 use magick_rust::{MagickWand, magick_wand_genesis};
 use rayon::prelude::*;
@@ -137,10 +139,16 @@ fn main() -> EMResult<()> {
     });
 
     env_logger::init();
-    let args: Vec<String> = env::args().collect();
-    let indir = args.get(1).expect("No directory name");
+
+    let matches = App::new("Exifmap")
+        .version("0.1")
+        .author("Wieland Hoffmann")
+        .arg(Arg::with_name("indir").value_name("INDIR").required(true))
+        .arg(Arg::with_name("outdir").value_name("OUTDIR").required(true))
+        .get_matches();
+    let indir = matches.value_of("indir").unwrap();
     let inpath = path::PathBuf::from(indir).canonicalize()?;
-    let outdir = args.get(2).expect("No output directory name");
+    let outdir = matches.value_of("outdir").unwrap();
     let outpath = path::PathBuf::from(outdir).canonicalize()?;
     let mut outfile = outpath.clone();
     outfile.push("data.json");
