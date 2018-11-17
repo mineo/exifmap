@@ -25,6 +25,8 @@ type EMResult<T> = std::result::Result<T, failure::Error>;
 enum EMError {
     #[fail(display = "{} has no GPS information", filename)]
     NoGPSInformation { filename: String },
+    #[fail(display = "Input path '{}' contains output path '{}'", inpath, outpath)]
+    InpPathContainsOutPath { inpath: String, outpath: String },
 }
 
 struct MediaInfo {
@@ -98,7 +100,7 @@ fn featurecollection_from_dir(dirname: &str) -> EMResult<FeatureCollection> {
     Ok(allfeatures)
 }
 
-fn main() -> Result<(), failure::Error> {
+fn main() -> EMResult<()> {
     static START: Once = Once::new();
 
     START.call_once(|| {
@@ -110,7 +112,19 @@ fn main() -> Result<(), failure::Error> {
     env_logger::init();
     let args: Vec<String> = env::args().collect();
     let indir = args.get(1).expect("No directory name");
-    let outfile = args.get(2).expect("No output file name");
+    let inpath = path::PathBuf::from(indir).canonicalize()?;
+    let outdir = args.get(2).expect("No output directory name");
+    let outpath = path::PathBuf::from(outdir).canonicalize()?;
+    let mut outfile = outpath.clone();
+    outfile.push("data.json");
+
+    if outpath.as_path().starts_with(inpath.as_path()) {
+        return Err(EMError::InpPathContainsOutPath{
+            inpath: String::from(inpath.to_string_lossy()),
+            outpath: String::from(outpath.to_string_lossy())
+        })?;
+    }
+
     featurecollection_from_dir(indir)
         .and_then(|f| serde_json::to_string(&f).map_err(From::from))
         .and_then(|s| fs::write(outfile, s).map_err(From::from))
