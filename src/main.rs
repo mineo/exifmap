@@ -152,7 +152,7 @@ fn main() -> EMResult<()> {
 
     assert!(outpath.is_dir());
 
-    let mediainfos: Vec<MediaInfo> = mediainfos_from_dir(indir)
+    let features: Vec<Feature> = mediainfos_from_dir(indir)
         .into_par_iter()
         .map(|maybemediainfo| maybemediainfo.map_err(|e| {
             match e.as_fail().downcast_ref::<EMError>() {
@@ -161,10 +161,6 @@ fn main() -> EMResult<()> {
             }
         }))
         .flatten()
-        .collect();
-
-    let features = mediainfos
-        .into_par_iter()
         .map(|m| {
             match m.generate_thumbnail(outpath.as_ref(), 500, 500) {
                 Err(e) => Err(e),
