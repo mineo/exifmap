@@ -118,8 +118,13 @@ fn main() -> EMResult<()> {
 
     let features = mediainfos_from_dir(indir)
         .into_par_iter()
+        .map(|maybemediainfo| maybemediainfo.map_err(|e| {
+            match e.as_fail().downcast_ref::<EMError>() {
+                Some(EMError::NoGPSInformation { .. }) => trace!("{}", e),
+                _ => error!("{}", e),
+            }
+        }))
         .flat_map(|m| m.map(|i| i.to_feature()))
-        .map(|maybemediainfo| maybemediainfo.map_err(|e| error!("{}", e)))
         .flatten()
         .collect();
     let allfeatures = FeatureCollection {
