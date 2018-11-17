@@ -31,6 +31,8 @@ enum EMError {
     NoGPSInformation { filename: String },
     #[fail(display = "Input path '{}' contains output path '{}'", inpath, outpath)]
     InpPathContainsOutPath { inpath: String, outpath: String },
+    #[fail(display = "Unable to losslessly deal with filename '{:?}' ", filename)]
+    NoLosslessProcessingPossible { filename: path::PathBuf },
 }
 
 struct MediaInfo {
@@ -40,12 +42,13 @@ struct MediaInfo {
 }
 
 impl MediaInfo {
-    pub fn new(path: path::PathBuf, gpsinfo: rexiv2::GpsInfo) -> MediaInfo {
-        MediaInfo {
-            thumbnail_filename: MediaInfo::thumbnail_filename(path.as_ref()),
+    pub fn new(path: path::PathBuf, gpsinfo: rexiv2::GpsInfo) -> EMResult<MediaInfo> {
+        let thumbnail_filename = MediaInfo::generate_thumbnail_filename(path.as_ref())?;
+        Ok(MediaInfo {
+            thumbnail_filename: thumbnail_filename,
             path: path,
             gpsinfo: gpsinfo,
-        }
+        })
     }
 
 
@@ -53,7 +56,7 @@ impl MediaInfo {
         let metadata = rexiv2::Metadata::new_from_path(&path)?;
         match metadata.get_gps_info() {
             None => Err(EMError::NoGPSInformation{ filename: path.to_string_lossy().to_string()})?,
-            Some(gpsinfo) => Ok(MediaInfo::new(path, gpsinfo)),
+            Some(gpsinfo) => MediaInfo::new(path, gpsinfo),
         }
     }
 
@@ -93,10 +96,14 @@ impl MediaInfo {
         Ok(())
     }
 
-    fn thumbnail_filename(path: &path::Path) -> String {
-        let original_file_stem = path.file_stem().expect(&format!("MediaInfo without filename: {}", path.display())).to_str().unwrap();
-        let original_file_extension = path.extension().expect(&format!("MediaInfo without file extension: {}", path.display())).to_str().unwrap();
-        format!("{}_thumb.{}", original_file_stem, original_file_extension)
+    fn generate_thumbnail_filename(path: &path::Path) -> EMResult<String> {
+        let original_file_stem = path
+            .file_stem().expect(&format!("MediaInfo without filename: {}", path.display())).
+            to_str().ok_or_else(|| EMError::NoLosslessProcessingPossible { filename: path.to_owned()})?;
+        let original_file_extension = path
+            .extension().expect(&format!("MediaInfo without file extension: {}", path.display()))
+            .to_str().ok_or_else(|| EMError::NoLosslessProcessingPossible { filename: path.to_owned()})?;
+        Ok(format!("{}_thumb.{}", original_file_stem, original_file_extension))
     }
 }
 
