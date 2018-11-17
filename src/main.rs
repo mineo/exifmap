@@ -30,7 +30,7 @@ enum EMError {
 }
 
 struct MediaInfo {
-    path: String,
+    path: path::PathBuf,
     gpsinfo: rexiv2::GpsInfo,
 }
 
@@ -81,7 +81,7 @@ fn mediainfos_from_dir(dirname: &str) -> Vec<EMResult<MediaInfo>> {
                 Err(e) => Err(e),
                 Ok(Some(gps)) =>
                     Ok(MediaInfo {
-                        path: path.display().to_string().to_owned(),
+                        path: path,
                         gpsinfo: gps,
                     }),
                 Ok(None) =>
