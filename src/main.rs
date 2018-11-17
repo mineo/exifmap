@@ -15,13 +15,13 @@ extern crate walkdir;
 use clap::{App, Arg};
 use geojson::{Feature, FeatureCollection, Geometry, Value};
 use libc::size_t;
-use magick_rust::{MagickWand, magick_wand_genesis};
+use magick_rust::{magick_wand_genesis, MagickWand};
 use rayon::prelude::*;
-use serde_json::{Map, to_value};
+use serde_json::{to_value, Map};
 use std::convert::From;
+use std::env;
 use std::fs;
 use std::path;
-use std::env;
 use std::sync::Once;
 use walkdir::WalkDir;
 
@@ -31,9 +31,16 @@ type EMResult<T> = std::result::Result<T, failure::Error>;
 enum EMError {
     #[fail(display = "{} has no GPS information", filename)]
     NoGPSInformation { filename: String },
-    #[fail(display = "Input path '{}' contains output path '{}'", inpath, outpath)]
+    #[fail(
+        display = "Input path '{}' contains output path '{}'",
+        inpath,
+        outpath
+    )]
     InpPathContainsOutPath { inpath: String, outpath: String },
-    #[fail(display = "Unable to losslessly deal with filename '{:?}' ", filename)]
+    #[fail(
+        display = "Unable to losslessly deal with filename '{:?}' ",
+        filename
+    )]
     NoLosslessProcessingPossible { filename: path::PathBuf },
 }
 
@@ -53,11 +60,12 @@ impl MediaInfo {
         })
     }
 
-
     pub fn from_path(path: path::PathBuf) -> EMResult<MediaInfo> {
         let metadata = rexiv2::Metadata::new_from_path(&path)?;
         match metadata.get_gps_info() {
-            None => Err(EMError::NoGPSInformation{ filename: path.to_string_lossy().to_string()})?,
+            None => Err(EMError::NoGPSInformation {
+                filename: path.to_string_lossy().to_string(),
+            })?,
             Some(gpsinfo) => MediaInfo::new(path, gpsinfo),
         }
     }
@@ -66,10 +74,7 @@ impl MediaInfo {
         let mut properties = Map::new();
         properties.insert(String::from("filename"), to_value(self.path.to_owned())?);
 
-        let thispoint = Value::Point(vec![
-            self.gpsinfo.longitude,
-            self.gpsinfo.latitude,
-        ]);
+        let thispoint = Value::Point(vec![self.gpsinfo.longitude, self.gpsinfo.latitude]);
         let thisgeometry = Geometry::new(thispoint);
         let thisfeature = Feature {
             bbox: None,
@@ -81,7 +86,12 @@ impl MediaInfo {
         Ok(thisfeature)
     }
 
-    pub fn generate_thumbnail(&self, target_directory: &path::Path, width: size_t, height: size_t) -> EMResult<()> {
+    pub fn generate_thumbnail(
+        &self,
+        target_directory: &path::Path,
+        width: size_t,
+        height: size_t,
+    ) -> EMResult<()> {
         let wand = MagickWand::new();
         if let Err(e) = wand.read_image(self.path.to_str().unwrap()) {
             failure::bail!("Error reading '{}': {}", self.path.display(), e);
@@ -93,19 +103,36 @@ impl MediaInfo {
             failure::bail!("{} exists!", complete_thumbnail_filename.display());
         }
         if let Err(e) = wand.write_image(complete_thumbnail_filename.to_str().unwrap()) {
-            failure::bail!("Error writing '{}': {}", complete_thumbnail_filename.display(), e);
+            failure::bail!(
+                "Error writing '{}': {}",
+                complete_thumbnail_filename.display(),
+                e
+            );
         }
         Ok(())
     }
 
     fn generate_thumbnail_filename(path: &path::Path) -> EMResult<String> {
         let original_file_stem = path
-            .file_stem().expect(&format!("MediaInfo without filename: {}", path.display())).
-            to_str().ok_or_else(|| EMError::NoLosslessProcessingPossible { filename: path.to_owned()})?;
+            .file_stem()
+            .expect(&format!("MediaInfo without filename: {}", path.display()))
+            .to_str()
+            .ok_or_else(|| EMError::NoLosslessProcessingPossible {
+                filename: path.to_owned(),
+            })?;
         let original_file_extension = path
-            .extension().expect(&format!("MediaInfo without file extension: {}", path.display()))
-            .to_str().ok_or_else(|| EMError::NoLosslessProcessingPossible { filename: path.to_owned()})?;
-        Ok(format!("{}_thumb.{}", original_file_stem, original_file_extension))
+            .extension()
+            .expect(&format!(
+                "MediaInfo without file extension: {}",
+                path.display()
+            )).to_str()
+            .ok_or_else(|| EMError::NoLosslessProcessingPossible {
+                filename: path.to_owned(),
+            })?;
+        Ok(format!(
+            "{}_thumb.{}",
+            original_file_stem, original_file_extension
+        ))
     }
 }
 
@@ -120,22 +147,18 @@ fn mediainfos_from_dir(dirname: &str) -> Vec<EMResult<MediaInfo>> {
                 error!("{:?}: {}", e, err);
                 false
             }
-        })
-        .map(|entry| {
+        }).map(|entry| {
             let path = entry.unwrap().into_path();
             MediaInfo::from_path(path)
-        })
-        .collect()
+        }).collect()
 }
 
 fn main() -> EMResult<()> {
     static START: Once = Once::new();
 
-    START.call_once(|| {
-        unsafe {
-            gexiv2_sys::gexiv2_initialize();
-            magick_wand_genesis();
-        }
+    START.call_once(|| unsafe {
+        gexiv2_sys::gexiv2_initialize();
+        magick_wand_genesis();
     });
 
     env_logger::init();
@@ -154,9 +177,9 @@ fn main() -> EMResult<()> {
     outfile.push("data.json");
 
     if outpath.as_path().starts_with(inpath.as_path()) {
-        return Err(EMError::InpPathContainsOutPath{
+        return Err(EMError::InpPathContainsOutPath {
             inpath: String::from(inpath.to_string_lossy()),
-            outpath: String::from(outpath.to_string_lossy())
+            outpath: String::from(outpath.to_string_lossy()),
         })?;
     }
 
@@ -164,24 +187,26 @@ fn main() -> EMResult<()> {
 
     let features: Vec<Feature> = mediainfos_from_dir(indir)
         .into_par_iter()
-        .map(|maybemediainfo| maybemediainfo.map_err(|e| {
-            match e.as_fail().downcast_ref::<EMError>() {
+        .map(|maybemediainfo| {
+            maybemediainfo.map_err(|e| match e.as_fail().downcast_ref::<EMError>() {
                 Some(EMError::NoGPSInformation { .. }) => trace!("{}", e),
                 _ => error!("{}", e),
-            }
-        }))
-        .flatten()
-        .map(|m| {
-            match m.generate_thumbnail(outpath.as_ref(), 500, 500) {
-                Err(e) => Err(e),
-                _ => Ok(m)
-            }
-        })
-        .map(|maybemediainfo| maybemediainfo.map_err(|e| error!("{}", e)))
+            })
+        }).flatten()
+        .map(|m| match m.generate_thumbnail(outpath.as_ref(), 500, 500) {
+            Err(e) => Err(e),
+            _ => Ok(m),
+        }).map(|maybemediainfo| maybemediainfo.map_err(|e| error!("{}", e)))
         .flatten()
         .map(|m| m.to_feature())
         .flatten()
         .collect();
+
+    info!(
+        "Wrote {} thumbnails to '{}'",
+        features.len(),
+        outpath.display()
+    );
 
     let allfeatures = FeatureCollection {
         bbox: None,
@@ -191,5 +216,6 @@ fn main() -> EMResult<()> {
 
     Ok(allfeatures)
         .and_then(|f| serde_json::to_string(&f).map_err(From::from))
-        .and_then(|s| fs::write(outfile, s).map_err(From::from))
+        .and_then(|s| fs::write(&outfile, s).map_err(From::from))
+        .map(|_| info!("Wrote '{}'", outfile.display()))
 }
