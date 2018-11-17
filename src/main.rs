@@ -31,12 +31,6 @@ enum EMError {
     #[fail(display = "{} has no GPS information", filename)]
     NoGPSInformation { filename: String },
     #[fail(
-        display = "Input path '{}' contains output path '{}'",
-        inpath,
-        outpath
-    )]
-    InpPathContainsOutPath { inpath: String, outpath: String },
-    #[fail(
         display = "Unable to losslessly deal with filename '{:?}' ",
         filename
     )]
@@ -176,10 +170,7 @@ fn main() -> EMResult<()> {
     outfile.push("data.json");
 
     if outpath.as_path().starts_with(inpath.as_path()) {
-        return Err(EMError::InpPathContainsOutPath {
-            inpath: String::from(inpath.to_string_lossy()),
-            outpath: String::from(outpath.to_string_lossy()),
-        })?;
+        failure::bail!("'{}' contains '{}'", inpath.display(), outpath.display());
     }
 
     assert!(outpath.is_dir());
