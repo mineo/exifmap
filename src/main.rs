@@ -82,7 +82,7 @@ impl MediaInfo {
     pub fn generate_thumbnail(&self, target_directory: &path::Path, width: size_t, height: size_t) -> EMResult<()> {
         let wand = MagickWand::new();
         if let Err(e) = wand.read_image(self.path.to_str().unwrap()) {
-            failure::bail!("Error reading: {}", e);
+            failure::bail!("Error reading '{}': {}", self.path.display(), e);
         }
         wand.fit(width, height);
         let mut complete_thumbnail_filename = target_directory.to_owned();
@@ -91,7 +91,7 @@ impl MediaInfo {
             failure::bail!("{} exists!", complete_thumbnail_filename.display());
         }
         if let Err(e) = wand.write_image(complete_thumbnail_filename.to_str().unwrap()) {
-            failure::bail!("Error writing: {}", e);
+            failure::bail!("Error writing '{}': {}", complete_thumbnail_filename.display(), e);
         }
         Ok(())
     }
