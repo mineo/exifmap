@@ -48,6 +48,15 @@ impl MediaInfo {
         }
     }
 
+
+    pub fn from_path(path: path::PathBuf) -> EMResult<MediaInfo> {
+        let metadata = rexiv2::Metadata::new_from_path(&path)?;
+        match metadata.get_gps_info() {
+            None => Err(EMError::NoGPSInformation{ filename: path.to_string_lossy().to_string()})?,
+            Some(gpsinfo) => Ok(MediaInfo::new(path, gpsinfo)),
+        }
+    }
+
     pub fn to_feature(&self) -> EMResult<Feature> {
         let mut properties = Map::new();
         properties.insert(String::from("filename"), to_value(self.path.to_owned())?);
@@ -91,14 +100,6 @@ impl MediaInfo {
     }
 }
 
-fn get_gps_info(path: &path::PathBuf) -> EMResult<Option<rexiv2::GpsInfo>> {
-    let metadata = rexiv2::Metadata::new_from_path(path)?;
-    match metadata.get_gps_info() {
-        None => Ok(None),
-        Some(gpsinfo) => Ok(Some(gpsinfo)),
-    }
-}
-
 fn mediainfos_from_dir(dirname: &str) -> Vec<EMResult<MediaInfo>> {
     WalkDir::new(dirname)
         .into_iter()
@@ -113,13 +114,7 @@ fn mediainfos_from_dir(dirname: &str) -> Vec<EMResult<MediaInfo>> {
         })
         .map(|entry| {
             let path = entry.unwrap().path().to_owned();
-            match get_gps_info(&path) {
-                Err(e) => Err(e),
-                Ok(Some(gps)) =>
-                    Ok(MediaInfo::new(path, gps)),
-                Ok(None) =>
-                    Err(EMError::NoGPSInformation{ filename: path.to_string_lossy().to_string() })?,
-            }
+            MediaInfo::from_path(path)
         })
         .collect()
 }
