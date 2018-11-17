@@ -31,21 +31,17 @@ enum EMError {
 
 struct MediaInfo {
     path: String,
-    gpsinfo: Option<rexiv2::GpsInfo>,
+    gpsinfo: rexiv2::GpsInfo,
 }
 
 impl MediaInfo {
     pub fn to_feature(&self) -> EMResult<Feature> {
-        if self.gpsinfo.is_none() {
-            return Err(EMError::NoGPSInformation{ filename: self.path.to_owned() })?;
-        };
-
         let mut properties = Map::new();
         properties.insert(String::from("filename"), to_value(self.path.to_owned())?);
 
         let thispoint = Value::Point(vec![
-            self.gpsinfo.unwrap().longitude,
-            self.gpsinfo.unwrap().latitude,
+            self.gpsinfo.longitude,
+            self.gpsinfo.latitude,
         ]);
         let thisgeometry = Geometry::new(thispoint);
         let thisfeature = Feature {
@@ -67,8 +63,8 @@ fn get_gps_info(path: &path::PathBuf) -> EMResult<Option<rexiv2::GpsInfo>> {
     }
 }
 
-fn featurecollection_from_dir(dirname: &str) -> EMResult<FeatureCollection> {
-    let features: Vec<_> = WalkDir::new(dirname)
+fn mediainfos_from_dir(dirname: &str) -> Vec<EMResult<MediaInfo>> {
+    WalkDir::new(dirname)
         .into_iter()
         .par_bridge()
         .filter(|e| match e {
@@ -81,23 +77,18 @@ fn featurecollection_from_dir(dirname: &str) -> EMResult<FeatureCollection> {
         })
         .map(|entry| {
             let path = entry.unwrap().path().to_owned();
-            get_gps_info(&path).map(|gps| {
-                MediaInfo {
-                    path: path.display().to_string().to_owned(),
-                    gpsinfo: gps,
-                }
-            })
+            match get_gps_info(&path) {
+                Err(e) => Err(e),
+                Ok(Some(gps)) =>
+                    Ok(MediaInfo {
+                        path: path.display().to_string().to_owned(),
+                        gpsinfo: gps,
+                    }),
+                Ok(None) =>
+                    Err(EMError::NoGPSInformation{ filename: path.to_string_lossy().to_string() })?,
+            }
         })
-        .flat_map(|m| m.map(|i| i.to_feature()))
-        .map(|converted| converted.map_err(|e| error!("{}", e)))
-        .flatten()
-        .collect();
-    let allfeatures = FeatureCollection {
-        bbox: None,
-        features: features,
-        foreign_members: None,
-    };
-    Ok(allfeatures)
+        .collect()
 }
 
 fn main() -> EMResult<()> {
@@ -125,7 +116,18 @@ fn main() -> EMResult<()> {
         })?;
     }
 
-    featurecollection_from_dir(indir)
+    let features = mediainfos_from_dir(indir)
+        .into_par_iter()
+        .flat_map(|m| m.map(|i| i.to_feature()))
+        .map(|maybemediainfo| maybemediainfo.map_err(|e| error!("{}", e)))
+        .flatten()
+        .collect();
+    let allfeatures = FeatureCollection {
+        bbox: None,
+        features: features,
+        foreign_members: None,
+    };
+    Ok(allfeatures)
         .and_then(|f| serde_json::to_string(&f).map_err(From::from))
         .and_then(|s| fs::write(outfile, s).map_err(From::from))
 }
