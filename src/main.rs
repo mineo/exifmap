@@ -19,7 +19,6 @@ use magick_rust::{magick_wand_genesis, MagickWand};
 use rayon::prelude::*;
 use serde_json::{to_value, Map};
 use std::convert::From;
-use std::env;
 use std::fs;
 use std::path;
 use std::sync::Once;
