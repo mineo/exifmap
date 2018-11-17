@@ -113,7 +113,7 @@ fn mediainfos_from_dir(dirname: &str) -> Vec<EMResult<MediaInfo>> {
             }
         })
         .map(|entry| {
-            let path = entry.unwrap().path().to_owned();
+            let path = entry.unwrap().into_path();
             MediaInfo::from_path(path)
         })
         .collect()
