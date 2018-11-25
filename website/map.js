@@ -22,16 +22,11 @@ function featureToPopup(feature){
     var info = document.createElement("div");
 
     if ('thumbnail_filename' in feature.properties){
-        var imagelink = document.createElement("a");
-        imagelink.href = feature.properties.commons_link;
-        imagelink.target = "_blank";
-
         var image = document.createElement("img");
         image.src = "/output/" + feature.properties.thumbnail_filename;
+        image.setAttribute("width", "250px");
 
-        imagelink.appendChild(image);
-
-        info.appendChild(imagelink);
+        info.appendChild(image);
         info.appendChild(document.createElement("br"));
     }
 
