@@ -1,0 +1,3 @@
+[submodule "website/leaflet-hash"]
+	path = website/leaflet-hash
+	url = https://github.com/mlevans/leaflet-hash.git
