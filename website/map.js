@@ -21,10 +21,6 @@ function featureToPopup(feature){
     var marker = L.marker(coordinates, {'title': name});
     var info = document.createElement("div");
 
-    var name = document.createElement("h3");
-    name.textContent = feature.properties.name;
-    info.appendChild(name);
-
     if ('thumbnail_filename' in feature.properties){
         var imagelink = document.createElement("a");
         imagelink.href = feature.properties.commons_link;
@@ -38,16 +34,16 @@ function featureToPopup(feature){
         info.appendChild(imagelink);
         info.appendChild(document.createElement("br"));
     }
+
+    return info;
 }
 
 var hash = new L.Hash(map);
 $.getJSON("/output/data.json").done(function(data){
-    var markerCluster = new L.MarkerClusterGroup();
     var geoJsonLayer = L.geoJson(data, {
         onEachFeature: function(feature, layer) {
             layer.bindPopup(featureToPopup(feature));
         }
     });
-    markerCluster.addLayer(geoJsonLayer);
-    map.addLayer(markerCluster);
+    map.addLayer(geoJsonLayer);
 });
