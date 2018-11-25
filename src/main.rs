@@ -66,6 +66,10 @@ impl MediaInfo {
     pub fn to_feature(&self) -> EMResult<Feature> {
         let mut properties = Map::new();
         properties.insert(String::from("filename"), to_value(self.path.to_owned())?);
+        properties.insert(
+            String::from("thumbnail_filename"),
+            to_value(self.thumbnail_filename.to_owned())?,
+        );
 
         let thispoint = Value::Point(vec![self.gpsinfo.longitude, self.gpsinfo.latitude]);
         let thisgeometry = Geometry::new(thispoint);
