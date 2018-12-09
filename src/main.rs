@@ -5,10 +5,7 @@ use log::{error, info, trace};
 use magick_rust::{magick_wand_genesis, MagickWand};
 use rayon::prelude::*;
 use serde_json::{to_value, Map};
-use std::convert::From;
-use std::fs;
-use std::path;
-use std::sync::Once;
+use std::{convert::From, fs, path, sync::Once};
 use walkdir::WalkDir;
 
 type EMResult<T> = std::result::Result<T, failure::Error>;
