@@ -1,20 +1,7 @@
-extern crate clap;
-extern crate failure;
-extern crate geojson;
-extern crate gexiv2_sys;
-extern crate libc;
-#[macro_use]
-extern crate log;
-extern crate env_logger;
-extern crate magick_rust;
-extern crate rayon;
-extern crate rexiv2;
-extern crate serde_json;
-extern crate walkdir;
-
 use clap::{App, Arg};
 use geojson::{Feature, FeatureCollection, Geometry, Value};
 use libc::size_t;
+use log::{error, info, trace};
 use magick_rust::{magick_wand_genesis, MagickWand};
 use rayon::prelude::*;
 use serde_json::{to_value, Map};
@@ -30,10 +17,7 @@ type EMResult<T> = std::result::Result<T, failure::Error>;
 enum EMError {
     #[fail(display = "{} has no GPS information", filename)]
     NoGPSInformation { filename: String },
-    #[fail(
-        display = "Unable to losslessly deal with filename '{:?}' ",
-        filename
-    )]
+    #[fail(display = "Unable to losslessly deal with filename '{:?}' ", filename)]
     NoLosslessProcessingPossible { filename: path::PathBuf },
 }
 
@@ -122,7 +106,8 @@ impl MediaInfo {
             .expect(&format!(
                 "MediaInfo without file extension: {}",
                 path.display()
-            )).to_str()
+            ))
+            .to_str()
             .ok_or_else(|| EMError::NoLosslessProcessingPossible {
                 filename: path.to_owned(),
             })?;
@@ -144,10 +129,12 @@ fn mediainfos_from_dir(dirname: &str) -> Vec<EMResult<MediaInfo>> {
                 error!("{:?}: {}", e, err);
                 false
             }
-        }).map(|entry| {
+        })
+        .map(|entry| {
             let path = entry.unwrap().into_path();
             MediaInfo::from_path(path)
-        }).collect()
+        })
+        .collect()
 }
 
 fn main() -> EMResult<()> {
@@ -186,11 +173,13 @@ fn main() -> EMResult<()> {
                 Some(EMError::NoGPSInformation { .. }) => trace!("{}", e),
                 _ => error!("{}", e),
             })
-        }).flatten()
+        })
+        .flatten()
         .map(|m| match m.generate_thumbnail(outpath.as_ref(), 500, 500) {
             Err(e) => Err(e),
             _ => Ok(m),
-        }).map(|maybemediainfo| maybemediainfo.map_err(|e| error!("{}", e)))
+        })
+        .map(|maybemediainfo| maybemediainfo.map_err(|e| error!("{}", e)))
         .flatten()
         .map(|m| m.to_feature())
         .flatten()

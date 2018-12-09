@@ -2,6 +2,7 @@
 name = "exifmap"
 version = "0.1.0"
 authors = ["Wieland Hoffmann <themineo@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 geojson = "0.12"
